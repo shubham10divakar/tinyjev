@@ -2,6 +2,51 @@
 
 Newest first. Decisions, deviations from the design doc, and things to check later.
 
+## 2026-10-01 — data: tasks, mixture, synthetic, JevBench tooling (steps 7–9)
+
+- **Templates live in `jevcore/tasks.yaml`, not `templates.yaml`** (design App. A names the
+  latter). Micro-Jev's `templates.yaml` and tests stay untouched; Tiny's file holds every task
+  (26: RAG ×4, verification ×3, yes/no, topic ×6, MCQ ×3, paraphrase, security ×3, format,
+  held-out ×5) with 8 train + 2 held-out questions and [canonical, alternative] + 1 held-out
+  option wording. LLM-drafted; **review by hand before M2 freezes them.**
+- **No negated questions.** Two drafts ("Is anything missing…", "Is the language
+  acceptable?") would flip yes / no labels when templates are swapped; replaced.
+- **Dataset registry** (`data/tasks.py`): 24 training sources + 9 held-out, with HF id,
+  splits, licence and `commercial` (True / False / None = unclear). `--release-only` keeps True
+  only. Non-commercial or unclear: ag_news, yahoo, sciq, trec, mrpc, cyber (3 research-only
+  sources), yelp, sst2, imdb, tweet_eval. **All ids / fields are from memory; M1 must run
+  `prepare_mixture.py --check`.**
+- Deviations from §5.2:
+  - **NQ:** FlashRAG's NQ has questions only (no passages), so we use
+    `sentence-transformers/natural-questions` (query, gold passage); negatives are other rows'
+    passages (easy negatives; note in the data card). Val = last 2000 rows.
+  - **FEVER** needs evidence text: `copenlu/fever_gold_evidence` assumed; confirm.
+  - **which_passage** (RAG "which passage answers?") is a global choice over "[1]".."[n]" +
+    "none of them". It keeps `answer_seg`, so augmentation re-derives options and label after
+    shuffling / dropping segments. Added to Hotpot / 2Wiki / NQ packs when exactly one passage
+    is "directly answers"; SQuAD 2.0 builds it over 3–5 contexts of the same article.
+  - **Cap counts packs, not groups** (simpler to sample); RAG packs carry several groups.
+  - **MNLI** is used as 3-way `nli`; binary `grounded` stays in P1 (phase A) only.
+  - Families short of their quota are reported, not topped up from other families.
+- Augmentation (`data/tiny_augment.py`): question always drawn from the 8 train templates,
+  option wording swapped with p = 0.3, option subsampling above 4 options (gold kept),
+  multi-template packs (p = 0.3: 1–2 extra copies of a single-decision pack, each with a
+  different template), option order always shuffled. `single_template=True` = T-A4.
+- `heldout_view(pack, q, o)` = unseen-template val / test. `build_p2` returns `val_seen`
+  (canonical, per-decision T) and `val_unseen` (held-out templates, for `T_custom` and the
+  every-1k-steps eval).
+- Format family (`data/synthetic.py`): 7 features (URL, email, date, code, phone, money,
+  hashtag); 0–2 inserted into a real text, 1–3 questions per pack; labels from regex detectors
+  on the final text (so a base text that already has a date is labelled correctly).
+- **JevBench-mini**: tooling only (`jevbench/README.md`, `scripts/jevbench.py`
+  validate / agreement / freeze, hash check in `load_frozen`). `draft_items.jsonl` = 20
+  Claude-written examples of the format, **not** benchmark items. The 300 items are yours to
+  write (M2).
+- **`.gitignore` bug:** `data*/` (copied from microjev) also ignored `jevcore/data/`, so the
+  package wasn't committed. Anchored to the root (`/data*/`). **The microjev repo has the same
+  bug: its `jevcore/data/` is not tracked there.** Not fixed in microjev (separate repo,
+  worked on in parallel).
+
 ## 2026-10-01 — model, Session and M0 tests on random weights (steps 1–6)
 
 M0 on a tiny random Qwen3 (3 layers, d 64, GQA 4/2 heads, CPU, fp32), `tests/test_tiny_invariance.py`:

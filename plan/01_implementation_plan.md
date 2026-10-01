@@ -19,11 +19,13 @@ tinyjev/
     backbones/modernbert.py  (Micro-Jev, unchanged)
     backbones/qwen3.py       MarkerEmbedding, TinyJev, Session          <- new
     lm_readout.py            letter-readout baselines B0 / B5            <- new
-    templates.yaml           RAG decisions + every P2 / held-out task    <- extended
+    templates.yaml           Micro-Jev's RAG templates (unchanged)
+    tasks.yaml               every Tiny task: 8 train / 2 held-out questions + wordings  <- new
     data/tasks.py            dataset registry: HF id, licence, family, converter  <- new
     data/mixture.py          P2 sampling (caps, family quotas, n^0.5)    <- new
     data/synthetic.py        format-robustness family                    <- new
-    data/augment.py          + option subsampling, multi-template packs  <- extended
+    data/tiny_augment.py     option subsampling, multi-template packs, unseen-template view  <- new
+    data/jevbench.py         JevBench-mini load / validate / freeze / kappa  <- new
   tinyjev/__init__.py      public API: load(), session(), decide(), policy()
   jevbench/                JevBench-mini format, validator, draft items (H6)
   scripts/                 m0_check prepare_mixture train evaluate bench_latency baselines cascade invariance
@@ -42,9 +44,9 @@ tinyjev/
 | 4 | `backbones/qwen3.py`: `MarkerEmbedding`, `TinyJev` (LoRA via peft, fp32 head, marker init, save / load / merge) | §4.2, §4.3 | done |
 | 5 | `Session`: prefill, `decide` (+ crop), `extend` | §4.4 | done |
 | 6 | Tests T-A … T-E on a tiny random Qwen3 (fp32, CPU; sdpa + eager; with and without LoRA) | §7.4, M0 | done |
-| 7 | Task registry + templates (10 per task, 8 train / 2 held out; options canonical + 2 alternatives) | §5.2, §5.3 | todo |
-| 8 | Augmentation (option subsampling, multi-template packs), mixture sampler, synthetic format family, held-out builders H1–H5 | §5.2–5.4 | todo |
-| 9 | JevBench-mini: format, validator, freeze hash, draft items for you to rewrite | §5.4 H6 | todo |
+| 7 | Task registry + templates (10 per task, 8 train / 2 held out; options canonical + 2 alternatives) | §5.2, §5.3 | done |
+| 8 | Augmentation (option subsampling, multi-template packs), mixture sampler, synthetic format family, held-out builders H1–H5 | §5.2–5.4 | done |
+| 9 | JevBench-mini: format, validator, freeze hash, draft items for you to rewrite | §5.4 H6 | done |
 | 10 | `tinyjev` API: `load`, `session`, `decide`, `policy(tau)` → confidence / escalate | §9 | todo |
 | 11 | LM-readout baselines B0 / B5, unpacked B4 | §7.3 | todo |
 | 12 | Scripts: m0_check, prepare_mixture, train (LoRA, lr groups, token accumulation, `--overfit`, `--dry-run`), evaluate (+ `T_custom`), bench_latency, cascade, invariance | §6, §7 | todo |
