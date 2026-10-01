@@ -1,0 +1,67 @@
+# Question templates and option wordings per decision (design §5.2).
+#
+# questions.train[0] and options.train[0] are the canonical forms (= schema.DECISIONS).
+# A-qpara swaps the question for one of questions.train (p = 0.3).
+# A-verb swaps the option wording for one of options.train (p = 0.3).
+# Option wordings are aligned lists: position i always means the same label.
+# The heldout entries are NEVER used in training; they form the paraphrase test (§6.3, G7/H4).
+
+relevance:
+  questions:
+    train:
+      - "How relevant is this passage to the query?"
+      - "How useful is this passage for answering the query?"
+      - "Rate how well this passage answers the query."
+      - "Does this passage help answer the query?"
+      - "How related is this passage to what the query asks?"
+    heldout:
+      - "To what degree does this passage address the query?"
+      - "Judge this passage's relevance to the question asked."
+  options:
+    train:
+      - ["irrelevant", "partially relevant", "directly answers"]
+      - ["not relevant", "somewhat relevant", "fully answers"]
+      - ["unrelated", "related", "contains the answer"]
+      - ["no", "partly", "yes, it answers"]
+    heldout:
+      - ["off-topic", "helpful", "answers it"]
+
+sufficient:
+  questions:
+    train:
+      - "Do the passages contain enough information to answer the query?"
+      - "Can the query be answered from these passages alone?"
+      - "Is the information above sufficient to answer the query?"
+      - "Do these passages fully cover what is needed to answer the query?"
+      - "Is there enough evidence here to answer the query?"
+    heldout:
+      - "Could someone answer the query using only this context?"
+      - "Would these passages let you answer the query completely?"
+  options:
+    train:
+      - ["yes", "no"]
+      - ["true", "false"]
+      - ["sufficient", "insufficient"]
+      - ["answerable", "not answerable"]
+    heldout:
+      - ["enough", "not enough"]
+
+grounded:
+  questions:
+    train:
+      - "Is this claim supported by the context? Claim: {claim}"
+      - "Does the context back up this claim? Claim: {claim}"
+      - "Claim: {claim} Is it supported by the text above?"
+      - "Based on the context, is the following true? {claim}"
+      - "Is the claim entailed by the evidence? Claim: {claim}"
+    heldout:
+      - "Can this statement be verified from the passage? Statement: {claim}"
+      - "According to the context, does it hold that {claim}"
+  options:
+    train:
+      - ["yes", "no"]
+      - ["true", "false"]
+      - ["supported", "not supported"]
+      - ["entailed", "not entailed"]
+    heldout:
+      - ["confirmed", "unconfirmed"]
