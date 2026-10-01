@@ -18,7 +18,9 @@ tinyjev/
     schema.py packing.py collate.py heads.py loss.py calibration.py report.py scoring.py ...
     backbones/modernbert.py  (Micro-Jev, unchanged)
     backbones/qwen3.py       MarkerEmbedding, TinyJev, Session          <- new
-    lm_readout.py            letter-readout baselines B0 / B5            <- new
+    lm_readout.py            letter-readout baselines B0 / B1 / B5       <- new
+    tiny_trainer.py          LoRA trainer; packed, B4 and B5 feeders     <- new
+    tiny_eval.py             ragged metrics, T per decision + T_custom   <- new
     templates.yaml           Micro-Jev's RAG templates (unchanged)
     tasks.yaml               every Tiny task: 8 train / 2 held-out questions + wordings  <- new
     data/tasks.py            dataset registry: HF id, licence, family, converter  <- new
@@ -28,7 +30,7 @@ tinyjev/
     data/jevbench.py         JevBench-mini load / validate / freeze / kappa  <- new
   tinyjev/__init__.py      public API: load(), session(), decide(), policy()
   jevbench/                JevBench-mini format, validator, draft items (H6)
-  scripts/                 m0_check prepare_mixture train evaluate bench_latency baselines cascade invariance
+  scripts/                 m0_check prepare_mixture train evaluate bench_latency cascade jevbench (+ common)
   tests/                   T-A … T-E on a tiny random Qwen3 + data / API tests
   configs/                 tiny_0p6b.yaml (App. A), tiny_1p7b.yaml (B6)
 ```
@@ -47,10 +49,34 @@ tinyjev/
 | 7 | Task registry + templates (10 per task, 8 train / 2 held out; options canonical + 2 alternatives) | §5.2, §5.3 | done |
 | 8 | Augmentation (option subsampling, multi-template packs), mixture sampler, synthetic format family, held-out builders H1–H5 | §5.2–5.4 | done |
 | 9 | JevBench-mini: format, validator, freeze hash, draft items for you to rewrite | §5.4 H6 | done |
-| 10 | `tinyjev` API: `load`, `session`, `decide`, `policy(tau)` → confidence / escalate | §9 | todo |
-| 11 | LM-readout baselines B0 / B5, unpacked B4 | §7.3 | todo |
-| 12 | Scripts: m0_check, prepare_mixture, train (LoRA, lr groups, token accumulation, `--overfit`, `--dry-run`), evaluate (+ `T_custom`), bench_latency, cascade, invariance | §6, §7 | todo |
-| 13 | README how-to-run for M0–M5; update notes | — | todo |
+| 10 | `tinyjev` API: `load`, `session`, `decide`, `policy(tau)` → confidence / escalate | §9 | done |
+| 11 | LM-readout baselines B0 / B5, unpacked B4 | §7.3 | done |
+| 12 | Scripts: m0_check, prepare_mixture, train (LoRA, lr groups, token accumulation, `--overfit`, `--dry-run`), evaluate (+ `T_custom`), bench_latency, cascade, invariance | §6, §7 | done |
+| 13 | README how-to-run for M0–M5; update notes | — | done |
+
+## Resume here (next session)
+
+Implementation round finished 2026-10-01: 159 tests green on CPU, every script has a working
+`--dry-run`. Nothing has been trained or downloaded. Next, in order:
+
+1. **M0 proper** (GPU free): `python scripts/m0_check.py` (fp32), `--dtype bf16`, then
+   `--throughput`. Record config facts, Δp, tokens/s in notes. Decide the P2 size from the
+   throughput (§6: lower the cap to 10k if an epoch is > 12 h).
+2. **M0 reading:** `jaredpalmer/kev`, `TianyuCodings/NanoJev` head / mask design; note in notes.
+3. **M1:** `prepare_mixture.py --check` → fix ids / fields in `data/tasks.py`; P1 data; train
+   seeds 0–2 + B4; compare with Nano v1.0 / Micro-Jev.
+4. **M2:** review `jevcore/tasks.yaml` by hand; write + freeze JevBench-mini (300 items);
+   P2 + held-out data; data card; overfit check.
+5. M3 → M5 as in the README table.
+
+## Not implemented in this round
+
+- **P3** (distillation + `next_action` from rollouts, M6, optional): needs the RAG traces
+  (plan 03). `tinyjev.Q(...)` covers a next-action question meanwhile.
+- **Batching several states** in one cached call (§4.4 "first version: decisions within one
+  state"): `Session` handles one state; `decide_many` batches states without the cache.
+- **B6** (Qwen3-1.7B): only the config (`configs/tiny_1p7b.yaml`; `--config` it).
+- Plots (accuracy vs % escalated): `cascade.py` writes the curve as JSON only.
 
 ## Later (needs GPU / network; not this round)
 

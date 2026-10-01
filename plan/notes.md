@@ -2,6 +2,41 @@
 
 Newest first. Decisions, deviations from the design doc, and things to check later.
 
+## 2026-10-01 — API, baselines, trainer, eval, scripts (steps 10–13)
+
+- **API** (`tinyjev`): `load()`, `d.session(query, passages)` → `decide([...])` / `extend()`,
+  one-shot `d.decide(question, options, text)`, `d.run`, batched `d.decide_many` (no cache),
+  Nano-compatible `relevance / sufficient / grounded`. Results are `Decision` objects: a plain
+  `{option: p}` dict plus `.label`, `.confidence`, `.escalate`. `d.policy(tau)` takes a float
+  or per-decision dict. `which_passage` is a built-in; `next_action` is not (needs P3): use `Q`.
+- **B0 / B1 / B5 letter readout** (`lm_readout.py`): same prompt layout as Nano-Jev's LLM
+  baseline (chat template, thinking off, letter logits at the answer slot, `logits_to_keep=1`).
+  Left padding **with explicit position ids** (test: batched = alone). B1 is the HF
+  `Qwen/Qwen3-4B-Instruct-2507` (as in Nano), not Ollama. Groups with > 26 options are
+  skipped by the letter readout and counted. **B5 loss = CE over the K option letters**, not the
+  full vocabulary, so H8 compares readouts with the same objective shape.
+- **B4** = the same TinyJev and recipe on `unpacked_view` (one group per sequence; relevance
+  sees header + its own passage), at train *and* eval time (`--baseline B4`, `--unpacked`).
+- **T-A7 echo** = segments rendered twice in the state (`PackConfig.echo`); invariance and
+  cache tests pass with it; `Session.extend` raises with echo (would need re-echoing).
+- **Trainer** (`tiny_trainer.py`): param groups LoRA 2e-4 / head 1e-3 (wd 0.01 on matrices) /
+  markers 1e-3; cosine with 3% warmup to 10%; accumulation by **tokens** (each micro-batch's
+  loss weighted by its token share of `tokens_per_step`); eval every `eval_every` steps on the
+  validation packs; best checkpoint by macro NLL. Total steps estimated from the mean rendered
+  length of 300 sampled packs. Overfit test: macro val NLL halves in 40 steps on 6 packs.
+- **Eval** (`tiny_eval.py`): ragged stacking (pad logit −1e4, finite so T fitting is NaN-free);
+  T per training decision from `val_seen`, `T_custom` from `val_unseen`; held-out clusters and
+  JevBench always use `T_custom`. P2 val draws are split into calib (`val_seen` / `val_unseen`)
+  and in-domain `test` halves; evaluate adds the unseen-template view of `test`.
+- **Scripts** — all with `--dry-run`, covered by `tests/test_scripts.py`:
+  `m0_check` (config facts vs §2 table, probes on real weights with randomised head / LoRA-B,
+  `--throughput`), `prepare_mixture` (`--check` for M1), `train` (ablations by name, `--drop-family`,
+  `--overfit`, B4 / B5), `evaluate` (Tiny run, B0/B1 via `--lm`, B5 via `--b5`), `bench_latency`
+  (S10 + loop), `cascade` (τ on val only + per-set oracle τ), `jevbench`.
+- Windows console is cp1252: scripts reconfigure stdout to UTF-8 (`scripts/common.py`).
+- Dry-run CPU latency on the tiny model (meaningless for the 3060, but the plumbing works):
+  warm decide ≈ 2× faster than prefill + decide at S = 216 tokens.
+
 ## 2026-10-01 — data: tasks, mixture, synthetic, JevBench tooling (steps 7–9)
 
 - **Templates live in `jevcore/tasks.yaml`, not `templates.yaml`** (design App. A names the
