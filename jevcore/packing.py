@@ -16,6 +16,14 @@ Per-token bookkeeping (§3.5):
 
 With the block mask and the position restart, a decision's outputs are identical to running
 it alone (invariance, §6.4).
+
+Tiny-Jev (causal=True, design doc 15 §3): no [CLS] / [SEP], an optional sink token first, and
+end markers read out what the causal model has seen:
+
+    [sink] <state> {header} <seg> [1] ... <dec> <q> {question} <qe> <opt> {option} <oe> ...
+
+The anchor is <qe> (or <ref>), option j is read at its <oe>. `render_state` and
+`append_decisions` split a row into the cached prefix and the per-call decision part.
 """
 
 from dataclasses import dataclass, field
@@ -57,6 +65,7 @@ class PackConfig:
     decision_global: bool = True     # False: decision tokens keep the +-64 window (A3)
     half_window: int = 64            # ModernBERT local_attention // 2
     causal: bool = False             # Tiny-Jev
+    sink_id: int | None = None       # Tiny-Jev: BOS-like attention-sink token before <state> (§3)
     drop_untargeted: bool = True     # §3.7 step 3a
 
     @classmethod
@@ -186,42 +195,79 @@ def segment_text(i: int, seg: dict) -> str:
     return f"[{i + 1}] {title}: {seg['text']}" if title else f"[{i + 1}] {seg['text']}"
 
 
-def render(example: dict, tok, M: dict[str, int], cfg: PackConfig, enc=None) -> Rendered:
-    """Render one packed example (§3.9). Raises PackOverflow if it can't fit in cfg.max_len."""
-    enc = enc or _encoder(tok)
-    causal = cfg.causal
-    st = example["state"]
-    decisions = example["decisions"]
-
-    # Decision blocks first: their size sets the state's budget.
+def decision_blocks(decisions: list[dict], enc, M: dict[str, int], causal: bool):
+    """Token ids of each decision block: [(question ids, [option ids], n_ref)], and the total."""
     blocks = []
     for dec in decisions:
         q_ids = [M["dec"], M["q"]] + enc(dec["question"]) + ([M["qe"]] if causal else [])
         o_ids = [[M["opt"]] + enc(o) + ([M["oe"]] if causal else []) for o in dec["options"]]
         n_ref = len(dec.get("targets", [])) if dec["scope"] == "segment" else 0
         blocks.append((q_ids, o_ids, n_ref))
-    dec_tokens = sum(len(q) + sum(map(len, o)) + n for q, o, n in blocks)
-    overhead = 2 if causal else 3                     # [CLS] <state> ... [SEP]
-    budget = cfg.max_len - dec_tokens - overhead
+    return blocks, sum(len(q) + sum(map(len, o)) + n for q, o, n in blocks)
 
-    targeted = {t for d in decisions if d["scope"] == "segment" for t in d["targets"]}
-    header_ids = enc(st.get("header", ""))
-    seg_ids = [[M["seg"]] + enc(segment_text(i, s)) for i, s in enumerate(st.get("segments", []))]
+
+def state_overhead(cfg: PackConfig) -> int:
+    """Tokens of the state that aren't header or segments."""
+    if cfg.causal:                                    # [sink] <state> ...
+        return 1 + (cfg.sink_id is not None)
+    return 3                                          # [CLS] <state> ... [SEP]
+
+
+def segment_ids(i: int, seg: dict, enc, M: dict[str, int]) -> list[int]:
+    return [M["seg"]] + enc(segment_text(i, seg))
+
+
+def render_state(state: dict, tok, M: dict[str, int], cfg: PackConfig, budget: int,
+                 targeted: set[int] = frozenset(), enc=None) -> Rendered:
+    """The state part only (blk 0, positions from 0), truncated to `budget` header + segment
+    tokens (§3.7). Tiny-Jev's Session prefills exactly these tokens into the cache."""
+    enc = enc or _encoder(tok)
+    causal = cfg.causal
+    header_ids = enc(state.get("header", ""))
+    seg_ids = [segment_ids(i, s, enc, M) for i, s in enumerate(state.get("segments", []))]
     header, segs, truncated = truncate_state(header_ids, seg_ids, targeted, budget,
                                              cfg.drop_untargeted)
     # Re-number kept segments so the "[i]" labels match the pack order.
     if len(segs) < len(seg_ids):
-        segs = [(i, [M["seg"]] + enc(segment_text(k, st["segments"][i]))[: len(ids) - 1])
+        segs = [(i, segment_ids(k, state["segments"][i], enc, M)[: len(ids)])
                 for k, (i, ids) in enumerate(segs)]
 
     r = Rendered(truncated=truncated)
-    r.push(([] if causal else [tok.cls_token_id]) + [M["state"]] + header, blk=0, prt=0)
+    if causal:
+        first = ([cfg.sink_id] if cfg.sink_id is not None else []) + [M["state"]]
+    else:
+        first = [tok.cls_token_id, M["state"]]
+    r.push(first + header, blk=0, prt=0)
     for i, ids in segs:
         r.push(ids, blk=0, prt=i + 1)
         r.kept_segments.append(i)
     if not causal:
         r.push([tok.sep_token_id], blk=0, prt=0)
-    S = r.state_len = len(r)
+    r.state_len = len(r)
+    return r
+
+
+def render(example: dict, tok, M: dict[str, int], cfg: PackConfig, enc=None) -> Rendered:
+    """Render one packed example (§3.9). Raises PackOverflow if it can't fit in cfg.max_len."""
+    enc = enc or _encoder(tok)
+    decisions = example["decisions"]
+    # Decision blocks first: their size sets the state's budget.
+    blocks, dec_tokens = decision_blocks(decisions, enc, M, cfg.causal)
+    budget = cfg.max_len - dec_tokens - state_overhead(cfg)
+    targeted = {t for d in decisions if d["scope"] == "segment" for t in d["targets"]}
+    r = render_state(example["state"], tok, M, cfg, budget, targeted, enc)
+    append_decisions(r, decisions, blocks, M, cfg)
+    if len(r) > cfg.max_len:      # only possible if the decisions alone exceed max_len
+        raise PackOverflow(f"decision blocks alone need {dec_tokens} tokens > {cfg.max_len}")
+    return r
+
+
+def append_decisions(r: Rendered, decisions: list[dict], blocks, M: dict[str, int],
+                     cfg: PackConfig) -> Rendered:
+    """Append decision blocks after the state in `r` (positions restart at r.state_len).
+    Segment targets refer to the state's original segment indices."""
+    causal = cfg.causal
+    S = r.state_len
     restart = cfg.position_restart
 
     for d, (dec, (q_ids, o_ids, _)) in enumerate(zip(decisions, blocks)):
@@ -245,8 +291,6 @@ def render(example: dict, tok, M: dict[str, int], cfg: PackConfig, enc=None) -> 
                 ref = r.push([M["ref"]], blk=blk, prt=REF_BASE + t,
                              pos_start=S + Lq if restart else None)
                 r.groups.append(Group(dec["name"], ref, opt_tok, spans, lab, seg=t, dec=d))
-    if len(r) > cfg.max_len:      # only possible if the decisions alone exceed max_len
-        raise PackOverflow(f"decision blocks alone need {dec_tokens} tokens > {cfg.max_len}")
     return r
 
 
@@ -287,11 +331,15 @@ def pack_row(rendered: list[Rendered], example_ids=None) -> Row:
 
 # ------------------------------------------------------------------------------ masks
 
-def allowed(ex, blk, prt, valid, isolated=True, causal=False, ref_view="own"):
-    """Bool [T, T] for one row: True where query token q may attend key token k (§3.6)."""
-    Q = lambda t: t[:, None]  # noqa: E731
+def allowed(ex, blk, prt, valid, isolated=True, causal=False, ref_view="own", q_start=0):
+    """Bool [T - q_start, T] for one row: True where query token q may attend key token k (§3.6).
+
+    Rows are the query tokens q_start..T-1; the default gives the full [T, T] mask. Tiny-Jev's
+    cache path asks only for the new tokens' rows (`allowed_with_state`, §4.4)."""
+    Q = lambda t: t[q_start:, None]  # noqa: E731
     K = lambda t: t[None, :]  # noqa: E731
     T = blk.shape[0]
+    idx = torch.arange(T, device=blk.device)
     same_ex = Q(ex) == K(ex)
     q_state, k_state = Q(blk) == 0, K(blk) == 0
     q_ref = Q(prt) >= REF_BASE
@@ -299,7 +347,7 @@ def allowed(ex, blk, prt, valid, isolated=True, causal=False, ref_view="own"):
     if ref_view == "own":
         see_state = k_state & (q_state | ~q_ref | (K(prt) == 0) | (K(prt) == ref_seg))
     else:                                                 # A6: <ref> sees the whole state
-        see_state = k_state.expand(T, T)
+        see_state = k_state.expand(T - q_start, T)
     same_dec = ~q_state & (Q(blk) == K(blk))
     k_is_opt = (K(prt) > 0) & (K(prt) < REF_BASE)
     if isolated:
@@ -311,9 +359,8 @@ def allowed(ex, blk, prt, valid, isolated=True, causal=False, ref_view="own"):
     v = valid.bool()
     m = same_ex & (see_state | see_dec) & Q(v) & K(v)
     if causal:
-        idx = torch.arange(T, device=blk.device)
         m &= K(idx) <= Q(idx)
-    return m | torch.eye(T, dtype=torch.bool, device=blk.device)
+    return m | (K(idx) == Q(idx))
 
 
 def allowed_full(ex, valid):
