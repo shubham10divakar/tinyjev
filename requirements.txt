@@ -1,0 +1,12 @@
+# Install PyTorch with CUDA first:
+#   uv pip install torch --index-url https://download.pytorch.org/whl/cu128
+torch>=2.5
+transformers==5.17.0   # pinned: dict 4D-mask path and DynamicCache.crop semantics checked on this version (design §2, §11)
+peft>=0.17
+datasets>=3.0
+huggingface_hub>=0.24
+numpy
+scikit-learn
+pyyaml
+tqdm
+pytest>=8

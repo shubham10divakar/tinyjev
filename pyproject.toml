@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tiny-jev"
+dynamic = ["version"]
+description = "Open 0.6B decision model: calibrated probabilities over any options, with a reusable state cache for RAG loops"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Subham" }]
+keywords = ["rag", "calibration", "decision-model", "jev", "qwen3", "lora", "zero-shot"]
+dependencies = [
+    "torch>=2.1",
+    "transformers==5.17.0",
+    "peft>=0.17",
+    "huggingface_hub>=0.24",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+train = ["datasets>=3.0", "scikit-learn", "numpy", "tqdm"]
+test = ["pytest>=8"]
+
+[project.urls]
+Repository = "https://github.com/shubham10divakar/tinyjev"
+Model = "https://huggingface.co/sdmlai/tiny-jev"
+
+[tool.hatch.version]
+path = "tinyjev/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jevcore", "tinyjev"]
+core-metadata-version = "2.4"
+
+[tool.hatch.build.targets.sdist]
+core-metadata-version = "2.4"
+include = ["jevcore", "tinyjev", "tests", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["network: downloads real weights or datasets (set TINYJEV_NETWORK_TESTS=1)"]

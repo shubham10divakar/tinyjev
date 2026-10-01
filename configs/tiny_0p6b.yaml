@@ -1,0 +1,14 @@
+# Design doc Appendix A. Keys used by scripts/train.py and scripts/evaluate.py.
+model: {backbone: Qwen/Qwen3-0.6B, attn: sdpa, dtype: bf16, option_mode: isolated, ref_view: own,
+        readout: end_marker, head: pair, head_dtype: fp32, head_dropout: 0.1, sink_token: true,
+        lora: {r: 16, alpha: 32, dropout: 0.05,
+               targets: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]}}
+data:  {phase: P2, max_len: 2048, max_len_eval: 4096, cap_per_dataset: 20000, family_sampling_alpha: 0.5,
+        row_packing: true, templates: jevcore/templates.yaml, heldout_clusters: [H1, H2, H3, H4, H5, H6],
+        aug: {opt_subsample: true, optperm: true, subset_p: 0.8, shuffle: true, k_distractors: [0, 8],
+              verb_p: 0.3, qpara: all_train_templates, multi_template_p: 0.3}}
+train: {lr_lora: 2.0e-4, lr_head: 1.0e-3, lr_markers: 1.0e-3, betas: [0.9, 0.95], wd_head: 0.01,
+        warmup: 0.03, schedule: cosine, min_lr_ratio: 0.1, tokens_per_microbatch: 8192,
+        tokens_per_step: 65536, grad_ckpt: true, epochs: 1, eval_every: 1000, seed: 0,
+        select_by: val_nll}
+calib: {per_decision: true, custom_T_from: unseen_template_val}
