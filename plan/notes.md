@@ -21,6 +21,6 @@ Newest first. Decisions, deviations from the design doc, and things to check lat
   - `DynamicLayer.crop(n)`: negative n removes the last |n| tokens; a positive n is the legacy
     "absolute length" form, deprecated, removed in 5.18. Always call `crop(-Td)` (risk in §11).
 - **Shared code:** Micro-Jev has no remote and isn't a package yet, so `jevcore` is **vendored**
-  (copied from microjev @ `bd40d42`) instead of imported. Tiny-specific changes are made in
+  (copied from microjev @ `7c630a8`; microjev is being developed in parallel, so re-sync deliberately and note it here) instead of imported. Tiny-specific changes are made in
   separate commits so they can be upstreamed later. When `jevcore` becomes its own package,
   delete the copy here.

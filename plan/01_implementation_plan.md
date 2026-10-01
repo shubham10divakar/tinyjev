@@ -14,7 +14,7 @@ initialised Qwen3 config, so the tests need no network.
 tinyjev/
   15_tiny_jev_design.md
   plan/                    00_aims.md  01_implementation_plan.md  notes.md
-  jevcore/                 shared code, vendored from microjev @ bd40d42 (see notes)
+  jevcore/                 shared code, vendored from microjev @ 7c630a8 (see notes)
     schema.py packing.py collate.py heads.py loss.py calibration.py report.py scoring.py ...
     backbones/modernbert.py  (Micro-Jev, unchanged)
     backbones/qwen3.py       MarkerEmbedding, TinyJev, Session          <- new
