@@ -1,0 +1,579 @@
+# Tiny-Jev decision tasks: question templates and option wordings (design doc 15 §5.3).
+#
+# Per task:
+#   questions.train   8 templates (train[0] is canonical). Training always samples one of them.
+#   questions.heldout 2 templates, NEVER trained on: the unseen-template val / test (T_custom).
+#   options.train     aligned option wordings: [canonical, alternative]. Position i = label i.
+#   options.heldout   one more wording, never trained on.
+#   options omitted   -> the options come from the data (multiple choice, 77 / 150 intents).
+#   fields            placeholders the converter fills ({claim}, {question}, ...).
+#
+# About a third of the questions name the label semantics ("Is this text offensive?"), the rest
+# are neutral ("What is the sentiment?"). No question is negated: with yes / no options a negated
+# question would flip the label, and templates are swapped freely in training.
+#
+# Status: LLM-drafted 2026-10-01, to be reviewed and edited by hand before M2 freezes them.
+# Held-out cluster tasks (sentiment, copa, coreference, offensive, hate_speech) are never
+# trained at all; their "train" / "heldout" split only matters for reporting.
+
+# ============================================================== RAG control (35%)
+
+relevance:
+  family: rag
+  questions:
+    train:
+      - "How relevant is this passage to the query?"
+      - "How useful is this passage for answering the query?"
+      - "Rate how well this passage answers the query."
+      - "Does this passage help answer the query?"
+      - "How related is this passage to what the query asks?"
+      - "How much does this passage contribute to answering the query?"
+      - "Is this passage on-topic for the query, and does it answer it?"
+      - "Grade this passage against the query."
+    heldout:
+      - "To what degree does this passage address the query?"
+      - "Judge this passage's relevance to the question asked."
+  options:
+    train:
+      - ["irrelevant", "partially relevant", "directly answers"]
+      - ["not relevant", "somewhat relevant", "fully answers"]
+    heldout:
+      - ["off-topic", "helpful", "answers it"]
+
+sufficient:
+  family: rag
+  questions:
+    train:
+      - "Do the passages contain enough information to answer the query?"
+      - "Can the query be answered from these passages alone?"
+      - "Is the information above sufficient to answer the query?"
+      - "Do these passages fully cover what is needed to answer the query?"
+      - "Is there enough evidence here to answer the query?"
+      - "Do the passages hold all the facts the query needs?"
+      - "Could the query be answered without retrieving more documents?"
+      - "Are these passages enough to give a complete answer?"
+    heldout:
+      - "Could someone answer the query using only this context?"
+      - "Would these passages let you answer the query completely?"
+  options:
+    train:
+      - ["yes", "no"]
+      - ["sufficient", "insufficient"]
+    heldout:
+      - ["enough", "not enough"]
+
+which_passage:
+  family: rag
+  # options = "[1]" ... "[n]" plus "none of them"; built from the data, see data/tasks.py
+  questions:
+    train:
+      - "Which passage answers the query?"
+      - "Which passage contains the answer to the query?"
+      - "Where in the passages is the query answered?"
+      - "Pick the passage that best answers the query."
+      - "Which of these passages would you cite to answer the query?"
+      - "Which passage holds the information the query asks for?"
+      - "Which passage, if any, answers the query?"
+      - "Select the passage with the answer."
+    heldout:
+      - "In which passage can the answer to the query be found?"
+      - "Which document should be used to answer the query?"
+
+grounded:
+  family: verification
+  fields: [claim]
+  questions:
+    train:
+      - "Is this claim supported by the context? Claim: {claim}"
+      - "Does the context back up this claim? Claim: {claim}"
+      - "Claim: {claim} Is it supported by the text above?"
+      - "Based on the context, is the following true? {claim}"
+      - "Is the claim entailed by the evidence? Claim: {claim}"
+      - "Does the text above justify saying: {claim}"
+      - "Statement: {claim} Can it be inferred from the context?"
+      - "Is it safe to conclude from the context that {claim}"
+    heldout:
+      - "Can this statement be verified from the passage? Statement: {claim}"
+      - "According to the context, does it hold that {claim}"
+  options:
+    train:
+      - ["yes", "no"]
+      - ["supported", "not supported"]
+    heldout:
+      - ["confirmed", "unconfirmed"]
+
+# ============================================================== verification / NLI (12%)
+
+nli:
+  family: verification
+  fields: [hypothesis]
+  questions:
+    train:
+      - "How does this statement relate to the text? Statement: {hypothesis}"
+      - "Given the text, is the following entailed, neutral, or contradicted? {hypothesis}"
+      - "Statement: {hypothesis} Does the text support it, contradict it, or neither?"
+      - "If the text is true, what about this: {hypothesis}"
+      - "What is the relationship between the text and the hypothesis? Hypothesis: {hypothesis}"
+      - "Does the passage imply, contradict, or leave open this sentence? {hypothesis}"
+      - "Hypothesis: {hypothesis} Classify it against the premise above."
+      - "Read the premise. Is the following then true, false, or undetermined? {hypothesis}"
+    heldout:
+      - "Assuming the text is accurate, how should we judge this claim? {hypothesis}"
+      - "Compare the claim with the text. Claim: {hypothesis}"
+  options:
+    train:
+      - ["entailed", "neutral", "contradicted"]
+      - ["true", "undetermined", "false"]
+    heldout:
+      - ["follows", "unrelated", "conflicts"]
+
+fact_check:
+  family: verification
+  fields: [claim]
+  questions:
+    train:
+      - "Does the evidence support or refute this claim? Claim: {claim}"
+      - "Claim: {claim} What does the evidence say about it?"
+      - "Fact-check this claim against the evidence: {claim}"
+      - "Is this claim backed, contradicted, or not covered by the evidence? {claim}"
+      - "Given the evidence above, how should this claim be rated? {claim}"
+      - "Verify the claim using only the evidence. Claim: {claim}"
+      - "What is the verdict on this claim, based on the evidence? {claim}"
+      - "Is the following claim true according to the evidence? {claim}"
+    heldout:
+      - "Check the claim against the passage and give a verdict: {claim}"
+      - "How well does the evidence agree with this claim? {claim}"
+  options:
+    train:
+      - ["supported", "refuted", "not enough info"]
+      - ["true", "false", "unverifiable"]
+    heldout:
+      - ["confirmed", "debunked", "cannot tell"]
+
+# ============================================================== yes / no QA (5%)
+
+yes_no_qa:
+  family: yesno
+  fields: [question]
+  questions:
+    train:
+      - "Based on the passage: {question}?"
+      - "{question}? Answer from the text."
+      - "According to the passage, {question}?"
+      - "Using only the text above, {question}?"
+      - "Question: {question}? What does the passage say?"
+      - "Read the passage. {question}?"
+      - "Is the answer to this yes or no, given the passage: {question}?"
+      - "From the information above: {question}?"
+    heldout:
+      - "Judging by the article, {question}?"
+      - "The passage answers this: {question}?"
+  options:
+    train:
+      - ["yes", "no"]
+      - ["true", "false"]
+    heldout:
+      - ["correct", "incorrect"]
+
+# ============================================================== topic / intent (15%)
+
+news_topic:
+  family: topic
+  questions:
+    train:
+      - "What is this news article about?"
+      - "Which section of a newspaper does this article belong to?"
+      - "What topic does this news story cover?"
+      - "Classify this article by subject."
+      - "Is this article about world news, sports, business, or science and technology?"
+      - "Which news category fits this text best?"
+      - "What kind of news is this?"
+      - "Under which heading would you file this story?"
+    heldout:
+      - "Which desk at a news agency would handle this story?"
+      - "Pick the category of this headline and summary."
+  options:
+    train:
+      - ["world", "sports", "business", "science and technology"]
+      - ["international news", "sport", "economy", "sci/tech"]
+    heldout:
+      - ["global affairs", "athletics", "finance", "technology"]
+
+entity_type:
+  family: topic
+  questions:
+    train:
+      - "What kind of thing is this article about?"
+      - "What type of entity does this text describe?"
+      - "Classify the subject of this encyclopedia entry."
+      - "What is the main subject of this text: a person, place, organisation, work, or living thing? Be specific."
+      - "Which category does the described entity belong to?"
+      - "What is this entry about?"
+      - "Identify the type of the entity described."
+      - "Is this about a company, a place, a person, a creative work, or something else?"
+    heldout:
+      - "If you sorted encyclopedia articles into bins, which bin is this one?"
+      - "What sort of entity is the topic of this paragraph?"
+  options:
+    train:
+      - ["company", "educational institution", "artist", "athlete", "office holder",
+         "means of transportation", "building", "natural place", "village", "animal", "plant",
+         "album", "film", "written work"]
+      - ["business", "school or university", "musician or painter", "sportsperson", "politician",
+         "vehicle", "structure", "geographic feature", "small town", "creature", "flora",
+         "music record", "movie", "book"]
+    heldout:
+      - ["firm", "academic institution", "creative artist", "sports player", "public official",
+         "transport", "edifice", "natural landmark", "settlement", "fauna", "vegetation",
+         "music album", "motion picture", "publication"]
+
+question_topic:
+  family: topic
+  questions:
+    train:
+      - "What is this question about?"
+      - "Which forum category should this question be posted in?"
+      - "What topic does this user question belong to?"
+      - "Classify this question by subject."
+      - "Which section of a Q&A site fits this question?"
+      - "What area is the asker interested in?"
+      - "Route this question to the right category."
+      - "Is this question about science, health, sports, politics, or something else?"
+    heldout:
+      - "Which community would best answer this question?"
+      - "Tag this post with its topic."
+  options:
+    train:
+      - ["society and culture", "science and mathematics", "health", "education and reference",
+         "computers and internet", "sports", "business and finance", "entertainment and music",
+         "family and relationships", "politics and government"]
+      - ["culture", "science", "medicine", "education", "computers", "sport", "money",
+         "entertainment", "relationships", "politics"]
+    heldout:
+      - ["social issues", "math and science", "wellness", "learning", "technology", "athletics",
+         "finance", "music and movies", "family", "government"]
+
+question_type:
+  family: topic
+  questions:
+    train:
+      - "What kind of answer does this question expect?"
+      - "What type of question is this?"
+      - "Is this question asking for a person, a place, a number, a description, an entity, or an abbreviation?"
+      - "Classify the expected answer type of the question."
+      - "What sort of thing would answer this question?"
+      - "Which answer category fits this question?"
+      - "What is the question looking for?"
+      - "Label the question by the type of its answer."
+    heldout:
+      - "If you answered this question, what would your answer be?"
+      - "What does the asker want to find out: a who, where, how many, what, or why?"
+  options:
+    train:
+      - ["abbreviation", "entity", "description", "person", "location", "number"]
+      - ["acronym expansion", "thing", "explanation", "human", "place", "numeric value"]
+    heldout:
+      - ["abbreviation meaning", "object or concept", "definition or reason", "people", "where",
+         "quantity"]
+
+banking_intent:
+  family: topic
+  # options: the 77 Banking77 intent names, humanised ("card_arrival" -> "card arrival")
+  questions:
+    train:
+      - "What does this bank customer want?"
+      - "What is the intent of this customer message?"
+      - "Classify the customer's request."
+      - "Which support topic does this message belong to?"
+      - "What is the customer asking the bank about?"
+      - "Route this banking query to the right intent."
+      - "What problem or request is described here?"
+      - "Pick the intent that matches this message."
+    heldout:
+      - "Which help-centre article should this customer be shown?"
+      - "Label this banking chat message with its purpose."
+
+intent:
+  family: topic
+  # options: the 150 CLINC150 intent names (+ "out of scope"), humanised
+  questions:
+    train:
+      - "What does the user want the assistant to do?"
+      - "What is the intent of this request?"
+      - "Classify this voice-assistant command."
+      - "Which intent matches the user's utterance?"
+      - "What is the user asking for?"
+      - "Route this request to the right skill."
+      - "What is the purpose of this message?"
+      - "Pick the intent of the user."
+    heldout:
+      - "Which action should a virtual assistant take for this utterance?"
+      - "Tag this utterance with its intent."
+
+# ============================================================== multiple choice (15%)
+
+science_qa:
+  family: mcq
+  questions:
+    train:
+      - "Which answer is correct?"
+      - "What is the right answer to the question above?"
+      - "Pick the correct answer."
+      - "Which option answers the question?"
+      - "Choose the best answer to the science question."
+      - "Which of these is true?"
+      - "Select the correct option."
+      - "What is the answer?"
+    heldout:
+      - "A student must answer the question above. Which choice should they pick?"
+      - "Which answer would a science teacher mark as correct?"
+
+commonsense_qa:
+  family: mcq
+  questions:
+    train:
+      - "Which answer makes the most sense?"
+      - "What is the most sensible answer to the question?"
+      - "Pick the answer that fits common sense."
+      - "Which option is the best answer?"
+      - "Choose the most likely answer."
+      - "Using everyday knowledge, which answer is right?"
+      - "Which choice answers the question best?"
+      - "What would most people answer?"
+    heldout:
+      - "Which reply would a sensible person give?"
+      - "Which option fits the situation described?"
+
+story_completion:
+  family: mcq
+  questions:
+    train:
+      - "What happens next?"
+      - "Which ending fits the text best?"
+      - "How does the passage most likely continue?"
+      - "Pick the most plausible continuation."
+      - "Which sentence comes next?"
+      - "Choose the ending that makes sense."
+      - "What is the most likely next event?"
+      - "Which continuation is natural?"
+    heldout:
+      - "Finish the description with the most sensible option."
+      - "Which option completes the scene?"
+
+# ============================================================== paraphrase (5%)
+
+paraphrase:
+  family: paraphrase
+  questions:
+    train:
+      - "Do these two texts mean the same thing?"
+      - "Is passage 2 a paraphrase of passage 1?"
+      - "Do the two sentences say the same thing?"
+      - "Are these two texts equivalent in meaning?"
+      - "Is the meaning of the two passages the same?"
+      - "Could one text replace the other without changing the meaning?"
+      - "Are the two sentences restatements of each other?"
+      - "Do both passages express the same idea?"
+    heldout:
+      - "Would a reader take away the same information from both texts?"
+      - "Are these two sentences saying one thing in different words?"
+  options:
+    train:
+      - ["yes", "no"]
+      - ["same meaning", "different meaning"]
+    heldout:
+      - ["equivalent", "not equivalent"]
+
+# ============================================================== security (10%, Cyber-Jev)
+
+http_attack:
+  family: security
+  questions:
+    train:
+      - "Is this HTTP request a web attack (SQL injection, XSS, path traversal, command injection)?"
+      - "Is this request malicious?"
+      - "Does this HTTP request try to exploit the web server?"
+      - "Should a web application firewall block this request?"
+      - "Is this request an injection or traversal attempt?"
+      - "Is there an attack payload in this request?"
+      - "Classify this web request as safe or as an attack."
+      - "Would this request be flagged as an exploit attempt?"
+    heldout:
+      - "Is it risky to pass this request to the backend unfiltered?"
+      - "Does this traffic look like hacking?"
+  options:
+    train:
+      - ["safe", "attack"]
+      - ["benign", "malicious"]
+    heldout:
+      - ["harmless", "attack attempt"]
+
+prompt_injection:
+  family: security
+  questions:
+    train:
+      - "Is this text trying to override an AI model's instructions or jailbreak it?"
+      - "Is this a prompt injection?"
+      - "Does this message try to make an AI ignore its rules?"
+      - "Is this input a jailbreak attempt?"
+      - "Does this text attempt to hijack an assistant's instructions?"
+      - "Should an LLM guardrail block this input?"
+      - "Is this text manipulating an AI system?"
+      - "Classify this input as safe or as an injection."
+    heldout:
+      - "Would it be unsafe to paste this text into a chatbot's prompt?"
+      - "Is someone trying to take control of the AI with this message?"
+  options:
+    train:
+      - ["safe", "injection"]
+      - ["benign", "jailbreak attempt"]
+    heldout:
+      - ["normal text", "manipulation attempt"]
+
+phishing_url:
+  family: security
+  questions:
+    train:
+      - "Is this URL phishing or malicious?"
+      - "Is this link legitimate or a phishing link?"
+      - "Does this URL lead to a phishing site?"
+      - "Classify this URL."
+      - "Is this web address a scam?"
+      - "Would a mail filter flag this link as phishing?"
+      - "Is this URL trustworthy or malicious?"
+      - "Should users be warned before visiting this URL?"
+    heldout:
+      - "Is this link likely to steal someone's login?"
+      - "Can this address be trusted?"
+  options:
+    train:
+      - ["legitimate", "phishing"]
+      - ["safe", "malicious"]
+    heldout:
+      - ["trustworthy", "scam"]
+
+# ============================================================== format robustness (3%, synthetic)
+
+format_check:
+  family: format
+  fields: [feature]
+  questions:
+    train:
+      - "Does the text contain {feature}?"
+      - "Is there {feature} in the text?"
+      - "Does {feature} appear anywhere above?"
+      - "Check the text: does it include {feature}?"
+      - "Can you find {feature} in this text?"
+      - "Does this input mention {feature}?"
+      - "Is {feature} present?"
+      - "Scan the text for {feature}. Is there one?"
+    heldout:
+      - "Would a validator find {feature} in this text?"
+      - "Text check: {feature} present or not?"
+  options:
+    train:
+      - ["yes", "no"]
+      - ["present", "absent"]
+    heldout:
+      - ["found", "not found"]
+
+# ============================================================== held-out clusters (never trained)
+
+sentiment:          # H1: SST-2, IMDB, Yelp polarity
+  family: heldout
+  questions:
+    train:
+      - "What is the sentiment of this text?"
+      - "Is this review positive or negative?"
+      - "How does the writer feel?"
+      - "What is the tone of this review?"
+      - "Classify the opinion expressed."
+      - "Did the author like it?"
+      - "What is the overall attitude of the text?"
+      - "Is the reviewer happy or unhappy?"
+    heldout:
+      - "Would this review make a reader want to try it?"
+      - "Which way does this opinion lean?"
+  options:
+    train:
+      - ["negative", "positive"]
+      - ["bad", "good"]
+    heldout:
+      - ["unfavourable", "favourable"]
+
+copa:               # H2: COPA
+  family: heldout
+  fields: [relation]
+  questions:
+    train:
+      - "What was the {relation}?"
+      - "Which option is the more likely {relation}?"
+      - "Pick the most plausible {relation} of the situation."
+      - "What is the {relation} of this event?"
+      - "Choose the {relation} that makes sense."
+      - "Which alternative is the {relation}?"
+      - "Which is a more plausible {relation}?"
+      - "Select the likely {relation}."
+    heldout:
+      - "Given the premise, which option is its {relation}?"
+      - "Which of these is the {relation}?"
+
+coreference:        # H2: Winogrande
+  family: heldout
+  questions:
+    train:
+      - "Which option correctly fills the blank (_)?"
+      - "Who or what does the blank (_) refer to?"
+      - "Fill in the blank."
+      - "What should replace the underscore?"
+      - "Which word belongs in the blank?"
+      - "Complete the sentence by filling the gap."
+      - "Which option makes the sentence make sense?"
+      - "Resolve the blank in the sentence."
+    heldout:
+      - "Which of the two fits the underscore best?"
+      - "What is the missing word?"
+
+offensive:          # H3: tweet_eval offensive
+  family: heldout
+  questions:
+    train:
+      - "Is this text offensive?"
+      - "Does this post contain offensive language?"
+      - "Would this tweet offend people?"
+      - "Is this message insulting or profane?"
+      - "Should a moderator flag this post as offensive?"
+      - "Classify the tweet as offensive or not."
+      - "Does this contain abuse, insults or swearing?"
+      - "Does this post cross the line into offensive content?"
+    heldout:
+      - "Would this post break a civility policy?"
+      - "Is this tweet rude?"
+  options:
+    train:
+      - ["not offensive", "offensive"]
+      - ["clean", "abusive"]
+    heldout:
+      - ["acceptable", "inappropriate"]
+
+hate_speech:        # H3: tweet_eval hate
+  family: heldout
+  questions:
+    train:
+      - "Is this hate speech?"
+      - "Does this text attack a group of people?"
+      - "Is this post hateful towards a group?"
+      - "Does this tweet express hate against immigrants or women?"
+      - "Should this post be removed as hate speech?"
+      - "Classify the tweet: hateful or not."
+      - "Does this message target people for who they are?"
+      - "Is this text discriminatory?"
+    heldout:
+      - "Would a hate-speech filter catch this post?"
+      - "Is this tweet bigoted?"
+  options:
+    train:
+      - ["not hateful", "hateful"]
+      - ["ok", "hate speech"]
+    heldout:
+      - ["harmless", "hostile"]
