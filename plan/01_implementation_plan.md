@@ -36,12 +36,12 @@ tinyjev/
 | # | Step | Design § | Status |
 |---|---|---|---|
 | 0 | git init, exclude from outer repo, aims + plan + notes | §1, §10 | done |
-| 1 | Scaffold: pyproject (pin transformers 5.17.0, peft), .gitignore, LICENSE, README stub, configs | §2, App. A | todo |
-| 2 | Vendor `jevcore` from microjev unchanged (own commit, so later diffs are visible) | — | todo |
-| 3 | `packing.py` for causal: sink token, split render into state / decision parts, `allowed()` for a row slice (cache masks) | §3, §4.4 | todo |
-| 4 | `backbones/qwen3.py`: `MarkerEmbedding`, `TinyJev` (LoRA via peft, fp32 head, marker init, save / load / merge) | §4.2, §4.3 | todo |
-| 5 | `Session`: prefill, `decide` (+ crop), `extend` | §4.4 | todo |
-| 6 | Tests T-A … T-E on a tiny random Qwen3 (fp32, CPU; sdpa + eager; with and without LoRA) | §7.4, M0 | todo |
+| 1 | Scaffold: pyproject (pin transformers 5.17.0, peft), .gitignore, LICENSE, README stub, configs | §2, App. A | done |
+| 2 | Vendor `jevcore` from microjev unchanged (own commit, so later diffs are visible) | — | done |
+| 3 | `packing.py` for causal: sink token, split render into state / decision parts, `allowed()` for a row slice (cache masks) | §3, §4.4 | done |
+| 4 | `backbones/qwen3.py`: `MarkerEmbedding`, `TinyJev` (LoRA via peft, fp32 head, marker init, save / load / merge) | §4.2, §4.3 | done |
+| 5 | `Session`: prefill, `decide` (+ crop), `extend` | §4.4 | done |
+| 6 | Tests T-A … T-E on a tiny random Qwen3 (fp32, CPU; sdpa + eager; with and without LoRA) | §7.4, M0 | done |
 | 7 | Task registry + templates (10 per task, 8 train / 2 held out; options canonical + 2 alternatives) | §5.2, §5.3 | todo |
 | 8 | Augmentation (option subsampling, multi-template packs), mixture sampler, synthetic format family, held-out builders H1–H5 | §5.2–5.4 | todo |
 | 9 | JevBench-mini: format, validator, freeze hash, draft items for you to rewrite | §5.4 H6 | todo |

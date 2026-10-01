@@ -2,6 +2,44 @@
 
 Newest first. Decisions, deviations from the design doc, and things to check later.
 
+## 2026-10-01 — model, Session and M0 tests on random weights (steps 1–6)
+
+M0 on a tiny random Qwen3 (3 layers, d 64, GQA 4/2 heads, CPU, fp32), `tests/test_tiny_invariance.py`:
+
+| Test | Result (max \|Δp\|) |
+|---|---|
+| T-A packed vs alone / reversed / options permuted / extra decision / row-packed / padded batch | ~1e-6 (sdpa, eager, LoRA, no sink, mean readout, linear head); bf16 ≤ 1e-2 |
+| T-A teeth: no block mask + no restart | > 1e-3 (the probes detect leaks) |
+| T-B training forward (mixed batch, row-packed) vs each decision alone | ~1e-6 |
+| T-C `Session.decide` vs one-pass training forward | 0.0 (cache path bit-identical on CPU) |
+| T-C teeth: zeroing the cached values changes the logits | yes |
+| T-D `extend` ×2 vs fresh session on the full state | ~1e-6, identical ids / positions |
+| T-E cache length after decide / extend | = S exactly |
+
+Decisions / deviations:
+- **Rendering split** (`packing.py`): `render` = `render_state` + `append_decisions`. The Session
+  prefills exactly `render_state`'s tokens, so the cache and training paths share one renderer.
+  `allowed(..., q_start)` returns only the new tokens' rows: `allowed_with_state` costs
+  O(Td·(S+Td)), not O((S+Td)²).
+- **Sink token:** `<|endoftext|>` (falls back to BOS / pad) before `<state>`, on by default
+  (`sink_token: true`). Overhead of the causal state is now 1 + sink (was a fixed 2).
+- **Session never drops segments** (`drop_untargeted=False`): it caps per-segment length with a
+  warning if the state is too long, and `extend` raises `PackOverflow` and leaves the session
+  untouched.
+- **Markers:** ids are added to the tokenizer but the embedding is *not* resized; `embed()`
+  clamps ids into the table and `MarkerEmbedding` (fp32, 8 × d) substitutes the vectors. Init =
+  mean of the marker words' embeddings + 0.02·std noise (so `<opt>`/`<oe>` and `<seg>`/`<ref>`,
+  which share words, start apart).
+- **Head in fp32 with autocast disabled** inside `score()`, so bf16 autocast in training doesn't
+  downcast it.
+- **A1 (`mask: full`) on the causal model** = tril of the no-isolation mask (`row_masks`).
+- Sliding-window layers are rejected at construction (Qwen3-0.6B has none; confirm in M0).
+- Save: LoRA adapter (`adapter/`) + `markers.pt` + `head.pt` + tokenizer + `tinyjev_config.json`;
+  the base comes from the Hub id. `load(merge=True)` folds LoRA in for inference (outputs
+  within 1e-4 in tests). Random test bases are saved too (`backbone/`, via an unloaded copy).
+- Bugs caught by tests: saving the LoRA-injected base wrote `base_layer` keys (fixed by
+  `deepcopy(...).unload()`).
+
 ## 2026-10-01 — start
 
 - Repo: `code_repo/tinyjev/` with its own `git init`, remote

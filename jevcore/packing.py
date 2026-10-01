@@ -384,6 +384,8 @@ def row_masks(ex, blk, prt, valid, cfg: PackConfig):
     """(full, local) bool [T, T] masks for one row."""
     if cfg.mask == "full":
         full = allowed_full(ex, valid)
+        if cfg.causal:
+            full = torch.tril(full)
     else:
         full = allowed(ex, blk, prt, valid, cfg.isolated, cfg.causal, cfg.ref_view)
     return full, local_from_global(full, blk, cfg.half_window, cfg.decision_global)

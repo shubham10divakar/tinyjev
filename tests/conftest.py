@@ -90,3 +90,36 @@ def sample_example(n_seg=3, long=False):
 
 def network_enabled():
     return os.environ.get("TINYJEV_NETWORK_TESTS") == "1"
+
+
+# ------------------------------------------------------------------------------ Tiny-Jev (Qwen3)
+
+def tiny_qwen_config(tok, layers=3):
+    from transformers import Qwen3Config
+    return Qwen3Config(
+        vocab_size=len(tok), hidden_size=64, intermediate_size=128, num_hidden_layers=layers,
+        num_attention_heads=4, num_key_value_heads=2, head_dim=16, max_position_embeddings=2048,
+        pad_token_id=tok.pad_token_id, tie_word_embeddings=True,
+        # Peaked random attention so options get different hidden states (see tiny_config).
+        initializer_range=0.2)
+
+
+TINY_LORA = {"r": 4, "alpha": 8, "dropout": 0.0, "targets": ["q_proj", "v_proj", "down_proj"]}
+
+
+def tiny_qwen(attn="sdpa", seed=0, lora=None, **model_cfg):
+    """Random tiny Qwen3 Tiny-Jev. Marker ids sit past the embedding table (vocab_size =
+    len(tok) before markers), which exercises the clamp in TinyJev.embed."""
+    from jevcore.backbones.qwen3 import TinyJev
+    torch.manual_seed(seed)
+    tok = tiny_tokenizer()
+    model, tok, M = TinyJev.from_config(tiny_qwen_config(tok), tok,
+                                        {"attn": attn, "lora": lora, **model_cfg})
+    for p in model.head.parameters():          # zero-init last layer -> randomise for signal
+        if p.abs().sum() == 0:
+            torch.nn.init.normal_(p, std=0.5)
+    if lora:                                    # LoRA B starts at zero -> make adapters matter
+        for n, p in model.bb.named_parameters():
+            if "lora_B" in n:
+                torch.nn.init.normal_(p, std=0.2)
+    return model.eval(), tok, M
