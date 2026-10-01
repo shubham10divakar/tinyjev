@@ -66,6 +66,7 @@ class PackConfig:
     half_window: int = 64            # ModernBERT local_attention // 2
     causal: bool = False             # Tiny-Jev
     sink_id: int | None = None       # Tiny-Jev: BOS-like attention-sink token before <state> (§3)
+    echo: bool = False               # Tiny-Jev T-A7: segments rendered twice (causal asymmetry fix)
     drop_untargeted: bool = True     # §3.7 step 3a
 
     @classmethod
@@ -227,6 +228,13 @@ def render_state(state: dict, tok, M: dict[str, int], cfg: PackConfig, budget: i
     seg_ids = [segment_ids(i, s, enc, M) for i, s in enumerate(state.get("segments", []))]
     header, segs, truncated = truncate_state(header_ids, seg_ids, targeted, budget,
                                              cfg.drop_untargeted)
+    if cfg.echo:      # segments count twice: shrink their budget until header + 2x fits
+        b = budget
+        while len(header) + 2 * sum(len(x) for _, x in segs) > budget:
+            b -= len(header) + 2 * sum(len(x) for _, x in segs) - budget
+            header, segs, truncated = truncate_state(header_ids, seg_ids, targeted, b,
+                                                     cfg.drop_untargeted)
+            truncated = True
     # Re-number kept segments so the "[i]" labels match the pack order.
     if len(segs) < len(seg_ids):
         segs = [(i, segment_ids(k, state["segments"][i], enc, M)[: len(ids)])
@@ -241,6 +249,9 @@ def render_state(state: dict, tok, M: dict[str, int], cfg: PackConfig, budget: i
     for i, ids in segs:
         r.push(ids, blk=0, prt=i + 1)
         r.kept_segments.append(i)
+    if cfg.echo:      # second copy: each segment now also sees every other segment (causal)
+        for i, ids in segs:
+            r.push(ids, blk=0, prt=i + 1)
     if not causal:
         r.push([tok.sep_token_id], blk=0, prt=0)
     r.state_len = len(r)

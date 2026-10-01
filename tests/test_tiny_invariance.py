@@ -188,3 +188,31 @@ def test_TC_has_teeth_cache_is_really_used():
         layer.values.mul_(0.0)
     b = s.logits(ex["decisions"])
     assert max(float((x["logits"] - y["logits"]).abs().max()) for x, y in zip(a, b)) > 1e-3
+
+
+def test_echo_ablation_T_A7():
+    model, tok, M = tiny_qwen(echo=True)
+    cfg = model.pack_config(1024)
+    ex = sample_example()
+    r = render(ex, tok, M, cfg)
+    seg0 = [r.ids[i] for i, (b, p) in enumerate(zip(r.blk, r.prt)) if b == 0 and p == 1]
+    half = len(seg0) // 2
+    assert half and seg0[:half] == seg0[half:]                      # segment 1 rendered twice
+    diffs = probe(model, tok, M, ex, _other(), cfg)
+    assert all(d <= TOL for d in diffs.values()), diffs
+    _, cached = _session_probs(model, tok, cfg, ex)
+    assert max_diff(probs_of(model, tok, M, [ex], cfg), cached) <= TOL
+    plain_model, _, _ = tiny_qwen()
+    assert max_diff(probs_of(plain_model, tok, M, [ex], plain_model.pack_config(1024)),
+                    probs_of(model, tok, M, [ex], cfg)) > 1e-4      # echo changes the state
+    with pytest.raises(NotImplementedError):
+        Session(model, tok, cfg, ex["state"]).extend([("x", "radio city .")])
+
+
+def test_echo_truncation_fits():
+    model, tok, M = tiny_qwen(echo=True)
+    cfg = model.pack_config(350)
+    ex = sample_example(n_seg=5, long=True)
+    assert len(render(ex, tok, M, model.pack_config(2000))) > 350       # would not fit as is
+    r = render(ex, tok, M, cfg)
+    assert len(r) <= 350 and r.truncated

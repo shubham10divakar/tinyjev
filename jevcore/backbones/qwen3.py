@@ -37,7 +37,7 @@ DEFAULT_LORA = {"r": 16, "alpha": 32, "dropout": 0.05,
 DEFAULT_MODEL_CFG = {"backbone": DEFAULT_BASE, "attn": "sdpa", "dtype": "bf16",
                      "option_mode": "isolated", "ref_view": "own", "readout": "end_marker",
                      "head": "pair", "head_dropout": 0.1, "sink_token": True, "mask": "block",
-                     "position_restart": True, "lora": DEFAULT_LORA}
+                     "position_restart": True, "echo": False, "lora": DEFAULT_LORA}
 
 
 class MarkerEmbedding(nn.Module):
@@ -136,7 +136,8 @@ class TinyJev(nn.Module):
         c = self.cfg
         return PackConfig(max_len=max_len, isolated=c["option_mode"] == "isolated",
                           position_restart=c["position_restart"], mask=c["mask"],
-                          ref_view=c["ref_view"], causal=True, sink_id=self.sink_id)
+                          ref_view=c["ref_view"], causal=True, sink_id=self.sink_id,
+                          echo=c.get("echo", False))
 
     def enable_grad_ckpt(self) -> None:
         self.bb.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
@@ -369,6 +370,8 @@ class Session:
     def extend(self, segments: list[dict]) -> None:
         """Append chunks: they attend to the whole previous state (causal), positions continue,
         nothing already cached is recomputed."""
+        if self.cfg.echo:
+            raise NotImplementedError("extend() with echo (T-A7): build a new Session instead")
         segs = [s if isinstance(s, dict) else {"title": s[0], "text": s[1]} for s in segments]
         start = self.S
         for k, seg in enumerate(segs):
