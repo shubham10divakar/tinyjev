@@ -295,7 +295,7 @@ def test_build_p2_with_fake_loader():
     assert card["families"]["format"] == 30                 # 3% synthetic, generated to size
     for p in out["train"][:200]:
         validate(p)
-    assert len(out["val_seen"]) == len(out["val_unseen"]) > 0
+    assert len(out["val_seen"]) == len(out["val_unseen"]) > 0 and len(out["test"]) > 0
     heldout_q = {q for t in T.task_table().values() for q in t["questions"]["heldout"]}
     filled = sum(1 for p in out["val_unseen"] for d in p["decisions"]
                  if d["name"] not in ("relevance", "which_passage") or d["question"] in heldout_q)

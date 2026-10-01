@@ -59,12 +59,14 @@ Loader = Callable[[Source, str, int, int], list[dict]]
 def build_p2(total: int, cap: int = 20_000, alpha: float = 0.5, seed: int = 0,
              release_only: bool = False, n_val: int = 200, loader: Loader = load_source,
              sources: list[Source] | None = None, log=print) -> dict:
-    """{"train", "val_seen", "val_unseen", "card"}.
+    """{"train", "val_seen", "val_unseen", "test", "card"}.
 
     train       P2 packs (canonical templates; augmentation varies them each epoch)
     val_seen    per-source val packs, canonical templates (per-decision temperatures)
     val_unseen  the same packs under held-out templates and wordings (T_custom, eval every
                 1k steps, §5.3 / §6)
+    test        a disjoint half of each source's val split, canonical templates (in-domain test;
+                evaluate.py adds its unseen-template view)
     card        per-source counts and licences for the data card (M2)
     """
     srcs = sources if sources is not None else training_sources(release_only)
@@ -84,20 +86,23 @@ def build_p2(total: int, cap: int = 20_000, alpha: float = 0.5, seed: int = 0,
         else:
             train += rng.sample(pools[k], n)
     rng.shuffle(train)
-    val_seen, val_unseen = [], []
+    val_seen, val_unseen, test = [], [], []
     for s in srcs:
         try:
-            v = loader(s, "val", n_val, seed)
+            v = loader(s, "val", 2 * n_val, seed)
         except KeyError:
             continue
-        val_seen += v
-        val_unseen += [heldout_view(p, q_idx=i % 2, o_idx=0) for i, p in enumerate(v)]
+        half = len(v) // 2                       # calib half / in-domain test half
+        val_seen += v[:half]
+        val_unseen += [heldout_view(p, q_idx=i % 2, o_idx=0) for i, p in enumerate(v[:half])]
+        test += v[half:]
     if "format" in alloc:
-        fv = format_packs(n_val, seed + 1)
+        fv = format_packs(2 * n_val, seed + 1)
         for p in fv:
             p["id"] = p["id"].replace("format-", "format-val-")
-        val_seen += fv
-        val_unseen += [heldout_view(p, q_idx=i % 2, o_idx=0) for i, p in enumerate(fv)]
+        val_seen += fv[:n_val]
+        val_unseen += [heldout_view(p, q_idx=i % 2, o_idx=0) for i, p in enumerate(fv[:n_val])]
+        test += fv[n_val:]
     card = {"total": len(train), "requested": total, "cap": cap, "alpha": alpha,
             "release_only": release_only, "shortfall": short,
             "families": dict(Counter(p.get("meta", {}).get("family", "?") for p in train)),
@@ -108,7 +113,8 @@ def build_p2(total: int, cap: int = 20_000, alpha: float = 0.5, seed: int = 0,
                         for k in avail}}
     if short:
         log(f"warning: families short of their quota: {short}")
-    return {"train": train, "val_seen": val_seen, "val_unseen": val_unseen, "card": card}
+    return {"train": train, "val_seen": val_seen, "val_unseen": val_unseen, "test": test,
+            "card": card}
 
 
 def build_p1(sizes: dict, seed: int = 0) -> dict:
