@@ -125,7 +125,7 @@ def main(argv=None):
     if sets.get("test"):
         sets["test_unseen"] = [heldout_view(p, i % 2, 0) for i, p in enumerate(sets["test"])]
 
-    results = Path(a.results or ROOT / "results" / name)
+    results = Path(a.results or ROOT / "results" / ("dry" if a.dry_run else "") / name)
     t0 = time.time()
     scored = {}
     for k, ps in sets.items():
